@@ -8,7 +8,7 @@
 
 # ## Environment
 
-# In[33]:
+# In[10]:
 
 
 import numpy as np
@@ -31,7 +31,7 @@ initial_state = State(5, 0)
 
 # ## Reward Signal
 
-# In[34]:
+# In[11]:
 
 
 def reward(state):
@@ -42,7 +42,7 @@ reward(initial_state)
 
 # ## Value Function
 
-# In[35]:
+# In[12]:
 
 
 def zero_values():
@@ -53,11 +53,11 @@ def value(state):
 
 
 def show_values(decimal_numbers=5):
-    expression = "{" + ":.{}".format(decimal_numbers) + "f} " 
+    cell_value = "{" + ":.{}".format(decimal_numbers) + "f} " 
     for row in range(V.shape[0]):
         val = "" 
         for col in range(V.shape[1]):
-          val += expression.format(V[row, col])
+          val += cell_value.format(V[row, col])
         print(val)
         
 V = zero_values()
@@ -69,7 +69,7 @@ show_values()
 # - Deterministic: (e.g. always take the highest value) 
 # - Stochastic: (e.g. random exploration or epsilon-greedy).
 
-# In[36]:
+# In[13]:
 
 
 from enum import Enum
@@ -81,7 +81,7 @@ class Action(Enum):
     LEFT = 4
 
 
-# In[37]:
+# In[14]:
 
 
 def is_wall(position):
@@ -101,11 +101,13 @@ def possible_actions(state):
     if can_go_up(state):    actions.append(Action.UP)
     if can_go_down(state):  actions.append(Action.DOWN)
     return actions
+def end_state(state):
+    return WORLD[state.row, state.col] == 'E'
 
 possible_actions(initial_state)
 
 
-# In[38]:
+# In[15]:
 
 
 import random
@@ -124,8 +126,11 @@ def take_action(prev_state, action):
     if action is Action.DOWN: return go_down(prev_state)
     if action is Action.LEFT: return go_left(prev_state)
     if action is Action.RIGHT: return go_right(prev_state)
+    
+def random_exploration(state):
+    return random.choice(possible_actions(state)) 
 
-def next_action(state):
+def maximum_value(state):
     actions = random.choice(possible_actions(state)) 
     action_to_values = {}
     for action in possible_actions(state):
@@ -134,44 +139,82 @@ def next_action(state):
     max_actions = [a for a, v in action_to_values.items() if v == max_value]
     return random.choice(max_actions)
 
-# print(take_action(State(5, 4), Action.UP))
-# print(next_action(initial_state))
-print(next_action(State(5, 3)))
+def epsylon_greedy(state, episode_number, min_epsylon=0.1):
+    epsylon = 1 - (episode_number / 100)
+    epsylon = max(min_epsylon, epsylon)
+    rand_number = round(random.random(), 4)
+    if (rand_number < epsylon): action = random_exploration(state)
+    else: action = maximum_value(state)
+    return action
 
-
-# In[39]:
-
-
-def end_state(state):
-    return WORLD[state.row, state.col] == 'E'
+# print(maximum_value(State(5, 3)))
+print(epsylon_greedy(State(4, 0), 0))
+# initial_state
 
 
 # ## Temporal Difference Learning
+# 
+# **Parameters:**
+# 
+# Alpha - Learning Rate [0, 1]
+# 
+# Gamma - Discount Rate [0, 1]
 
-# In[40]:
+# In[48]:
 
 
 V = zero_values()
 
 alpha = 0.5
-gamma = 0.75
-episodes = 50
+gamma = 0.85
+episodes = 100
+steps_per_episode = []
 for episode in range(episodes):
     state = initial_state
     exploring = True
+    step = 0
     while(exploring):
-        action = next_action(state)
+#         action = random_exploration(state)
+#         action = maximum_value(state)
+        action = epsylon_greedy(state, episode)
         next_state = take_action(state, action)
         learning = alpha * (reward(state) + gamma * value(next_state) - value(state))
         V[state.row, state.col] += learning
         if end_state(state): exploring = False
         state = next_state
-show_values(decimal_numbers=10)
+        step +=1
+    steps_per_episode.append(step)
+show_values(decimal_numbers=4)
+
+
+# # Learning outcomes
+
+# In[49]:
+
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+import matplotlib.pyplot as plt
+max_steps = np.max(steps_per_episode)
+print("Maximum steps", max_steps)
+min_steps = np.min(steps_per_episode)
+print("Minimum steps", min_steps)
+
+plt.plot(range(episodes), steps_per_episode)
+
+
+# In[50]:
+
+
+fig, axs = plt.subplots()
+im = axs.imshow(V)
+fig.colorbar(im)
+
+plt.show()
 
 
 # ## Strategy learned
 
-# In[41]:
+# In[43]:
 
 
 action_encoding = {
@@ -186,8 +229,7 @@ def learned_strategy():
     for row in range(world_height):
         s_row = []
         for col in range(world_width):
-            if is_wall(State(row, col)):
-                s_row.append(" ")
+            if is_wall(State(row, col)): s_row.append("W")
             else:
                 action = next_action(State(row, col))
                 s_row.append(action_encoding[action])
@@ -197,21 +239,14 @@ def learned_strategy():
 learned_strategy()
 
 
-# In[42]:
+# In[46]:
 
 
-# count how many steps you require to get home
-
-
-# In[43]:
-
-
-# Implement Epsylon - Greedy
 # Plot how V changes over learning
 # Plot how Policy changes
 
 
-# In[ ]:
+# In[57]:
 
 
 
