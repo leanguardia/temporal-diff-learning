@@ -8,7 +8,7 @@
 
 # ## Environment
 
-# In[10]:
+# In[1]:
 
 
 import numpy as np
@@ -31,7 +31,7 @@ initial_state = State(5, 0)
 
 # ## Reward Signal
 
-# In[11]:
+# In[2]:
 
 
 def reward(state):
@@ -42,7 +42,7 @@ reward(initial_state)
 
 # ## Value Function
 
-# In[12]:
+# In[3]:
 
 
 def zero_values():
@@ -69,7 +69,7 @@ show_values()
 # - Deterministic: (e.g. always take the highest value) 
 # - Stochastic: (e.g. random exploration or epsilon-greedy).
 
-# In[13]:
+# In[4]:
 
 
 from enum import Enum
@@ -81,7 +81,7 @@ class Action(Enum):
     LEFT = 4
 
 
-# In[14]:
+# In[5]:
 
 
 def is_wall(position):
@@ -107,7 +107,7 @@ def end_state(state):
 possible_actions(initial_state)
 
 
-# In[15]:
+# In[6]:
 
 
 import random
@@ -127,6 +127,14 @@ def take_action(prev_state, action):
     if action is Action.LEFT: return go_left(prev_state)
     if action is Action.RIGHT: return go_right(prev_state)
     
+def converged(steps_per_episode, num_of_evaluations=10):
+    if (len(steps_per_episode) <= num_of_evaluations):
+        return False
+    else:
+        tail = steps_per_episode[-num_of_evaluations:]
+        last = steps_per_episode[-1]
+        return all(last == steps for steps in tail)
+    
 def random_exploration(state):
     return random.choice(possible_actions(state)) 
 
@@ -139,82 +147,102 @@ def maximum_value(state):
     max_actions = [a for a, v in action_to_values.items() if v == max_value]
     return random.choice(max_actions)
 
-def epsylon_greedy(state, episode_number, min_epsylon=0.1):
-    epsylon = 1 - (episode_number / 100)
-    epsylon = max(min_epsylon, epsylon)
-    rand_number = round(random.random(), 4)
-    if (rand_number < epsylon): action = random_exploration(state)
-    else: action = maximum_value(state)
+def epsylon_greedy(state, current_episode, episodes_to_exploitation):
+    epsylon = 1 - (current_episode / episodes_to_exploitation)
+    epsylon = max(0, epsylon)
+    rand_number = random.random()
+    if (rand_number < epsylon):
+        action = random_exploration(state)
+    else:
+        action = maximum_value(state)
+    return action
+
+def next_action(state, policy, episode):
+    if policy == "EPSY":
+        action = epsylon_greedy(state, episode, episodes_to_exploitation=50)
+    elif policy == "MAX":
+        action = maximum_value(state)
+    elif policy == "RAND":
+        action = random_exploration(state)
+    else: print("PI: Not implemented")
     return action
 
 # print(maximum_value(State(5, 3)))
-print(epsylon_greedy(State(4, 0), 0))
-# initial_state
+print(epsylon_greedy(State(4, 0), 0, 1))
 
 
 # ## Temporal Difference Learning
 # 
 # **Parameters:**
 # 
-# Alpha - Learning Rate [0, 1]
+# Alpha - Learning Rate [0, 1] - How much we update our value estimate at each sample
 # 
 # Gamma - Discount Rate [0, 1]
 
-# In[48]:
+# In[7]:
 
 
 V = zero_values()
 
-alpha = 0.5
-gamma = 0.85
-episodes = 100
+policy = "EPSY"
+# policy = "MAX"
+# policy = "RAND"
+
+alpha = 0.75
+gamma = 0.9
+max_episodes = 500
+
 steps_per_episode = []
-for episode in range(episodes):
+episode = 0
+while(not converged(steps_per_episode, num_of_evaluations=15) and episode < max_episodes):
     state = initial_state
-    exploring = True
+    interacting = True
     step = 0
-    while(exploring):
-#         action = random_exploration(state)
-#         action = maximum_value(state)
-        action = epsylon_greedy(state, episode)
+    while(interacting):
+        action = next_action(state, policy, episode)
         next_state = take_action(state, action)
-        learning = alpha * (reward(state) + gamma * value(next_state) - value(state))
-        V[state.row, state.col] += learning
-        if end_state(state): exploring = False
-        state = next_state
-        step +=1
+        prediction_error = alpha * (reward(state) + gamma * value(next_state) - value(state))
+        V[state.row, state.col] += prediction_error
+        if end_state(state):
+            interacting = False
+            episode += 1
+        else:
+            state = next_state
+            step +=1
     steps_per_episode.append(step)
-show_values(decimal_numbers=4)
+show_values(decimal_numbers=5)
 
 
-# # Learning outcomes
-
-# In[49]:
+# In[8]:
 
 
 get_ipython().run_line_magic('matplotlib', 'inline')
 import matplotlib.pyplot as plt
+
+number_of_episodes = len(steps_per_episode)
+print("Episodes required:", number_of_episodes)
 max_steps = np.max(steps_per_episode)
-print("Maximum steps", max_steps)
+print("Maximum steps:", max_steps)
 min_steps = np.min(steps_per_episode)
-print("Minimum steps", min_steps)
-
-plt.plot(range(episodes), steps_per_episode)
-
-
-# In[50]:
+print("Minimum steps:", min_steps)
+fig = plt.figure(figsize=(8, 5));
+plt.plot(range(number_of_episodes), steps_per_episode)
+print(steps_per_episode)
 
 
-fig, axs = plt.subplots()
-im = axs.imshow(V)
-fig.colorbar(im)
+# In[9]:
 
+
+fig, axs = plt.subplots(figsize=(7, 6))
+im = axs.imshow(V, cmap="GnBu")
+fig.colorbar(im, fraction=0.04, pad=0.03)
+plt.grid()
 plt.show()
 
 
 # ## Strategy learned
 
-# In[43]:
+# In[13]:
 
 
 action_encoding = {
@@ -229,9 +257,9 @@ def learned_strategy():
     for row in range(world_height):
         s_row = []
         for col in range(world_width):
-            if is_wall(State(row, col)): s_row.append("W")
+            if is_wall(State(row, col)): s_row.append(" ")
             else:
-                action = next_action(State(row, col))
+                action = maximum_value(State(row, col))
                 s_row.append(action_encoding[action])
         strategy.append(s_row)
     return strategy
@@ -239,17 +267,26 @@ def learned_strategy():
 learned_strategy()
 
 
-# In[46]:
-
-
-# Plot how V changes over learning
-# Plot how Policy changes
-
-
-# In[57]:
+# In[ ]:
 
 
 
+
+
+# In[12]:
+
+
+index = np.array(range(75))
+epsilon = np.maximum(0, (-0.02 * index) + 1)
+fig, ax = plt.subplots(figsize=(8, 5))
+ax.text(7, 0.35, "Explore", fontsize=14)
+ax.text(30, 0.70, "Exploit", fontsize=14)
+ax.plot(index, epsilon, color="k")
+ax.fill_between(index, epsilon, color="green", alpha="0.3")
+ax.fill_between(index, epsilon, np.max(epsilon), alpha="0.3")
+plt.xlabel("Episodes")
+plt.ylabel("Epsilon")
+plt.show()
 
 
 # In[ ]:
